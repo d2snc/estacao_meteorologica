@@ -3,6 +3,19 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <Wire.h>
+#include <DHT.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <time.h>
+
+
+//Definições para a tela do display OLED
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 //Definições para o sistema
 
@@ -27,28 +40,56 @@
 #define A02  1
 #define A03  2
 
+//Variáveis Globais
 
+int codigoEvento;
+int codigoAcao;
+int estado;
+int acao_matrizTransicaoEstados[NUM_ESTADOS][NUM_EVENTOS];
+int proximo_estado_matrizTransicaoEstados[NUM_ESTADOS][NUM_EVENTOS];
+
+// Pre declaração de funções
+
+int executarAcao(int codigoAcao);
+void iniciaMaquinaEstados();
+int obterAcao(int estado, int codigoEvento);
+int obterProximoEstado(int estado, int codigoEvento);
+char msg_display(char msg);
+void delay(int number_of_seconds);
+
+//Setup do projeto
 
 void setup() {
   // put your setup code here, to run once:
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  iniciaMaquinaEstados(); //Inicio minha maquina de estados 
+  display.clearDisplay();
 
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 10);
+  // Display static text
+  display.println("PMR3402");
+  display.display();
+  delay(1);  
+  
 }
 
 // Loop principal de controle da Estação Meteorológica
 void loop() {
-  // put your main code here, to run repeatedly:
-  int codigoEvento;
-  int codigoAcao;
-  int estado;
 
   estado = STANDBY;
+  codigoEvento = NENHUM_EVENTO;
 
-  printf ("Estação Meteorologica iniciada\n");
-  for( ; ; ) {  
+  while(1) {  
+     
      codigoAcao = obterAcao(estado, codigoEvento);
      estado = obterProximoEstado(estado, codigoEvento);
      executarAcao(codigoAcao);
-     printf("Estado: %d Evento: %d Acao:%d\n", estado, codigoEvento, codigoAcao);
+     //printf("Estado: %d Evento: %d Acao:%d\n", estado, codigoEvento, codigoAcao);
   
   }
 
@@ -68,13 +109,40 @@ int executarAcao(int codigoAcao)
     switch(codigoAcao)
     {
     case A01:
-        msg_display("A01");
+        display.clearDisplay(); //Limpa display
+        display.setTextSize(1);
+        display.setTextColor(WHITE);
+        display.setCursor(0, 10);
+        // Display static text
+        display.println("A01\n");
+        display.display(); 
+        delay(1);
+        estado = MEDICOES_REALIZADAS;
+        codigoEvento = ENVIAR_DADOS;
         break;
     case A02:
-        msg_display("A02");
+        display.clearDisplay(); //Limpa display
+        display.setTextSize(1);
+        display.setTextColor(WHITE);
+        display.setCursor(0, 10);
+        // Display static text
+        display.println("A02\n");
+        display.display(); 
+        delay(1);
+        estado = DADOS_ARMAZENADOS;
+        codigoEvento = DISPONIBILIZAR_DADOS;
         break;
     case A03:
-        msg_display("A03");
+        display.clearDisplay(); //Limpa display
+        display.setTextSize(1);
+        display.setTextColor(WHITE);
+        display.setCursor(0, 10);
+        // Display static text
+        display.println("A03\n");
+        display.display(); 
+        delay(1);
+        estado = STANDBY;
+        codigoEvento = REALIZAR_MEDICOES;
         break;
     } // switch
 
@@ -119,14 +187,17 @@ int obterProximoEstado(int estado, int codigoEvento) {
   return proximo_estado_matrizTransicaoEstados[estado][codigoEvento];
 }
 
-//Função utilizada para exibir mensagens no display da Estacao
-char msg_display(char msg) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 10);
-  // Display static text
-  display.println(msg);
-  delay(3000);
-  display.display(); 
+
+
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
 }
