@@ -9,8 +9,32 @@
 #include <Adafruit_SSD1306.h>
 #include <time.h>
 #include <Adafruit_BMP280.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+
+//Definições para o sensor BMP280
+
 #define BMP_SDA 21
 #define BMP_SCL 22
+
+//Definições para o Wi-fi
+const char* ssid = "AP 104_EXT";
+const char* password = "11043083";
+
+//Configurações do servidor
+//const char* serverName = "http://estacao-meteorologica.000webhostapp.com/esp-dados-post.php";
+
+//Configurações para comunicação com o servidor
+String apiKeyValue = "USPPMR3402";
+String sensorName = "ESTAC";
+String sensorLocation = "Casa";
+
+IPAddress staticIP(192, 168, 15, 35);
+IPAddress gateway(192, 168, 15, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress primaryDNS(8, 8, 8, 8);   // dns do google
+IPAddress secondaryDNS(8, 8, 4, 4); // 
 
 
 //Definições para a tela do display OLED
@@ -80,6 +104,13 @@ void delay(int number_of_seconds);
 //Setup do projeto
 
 void setup() {
+  //Inicia serial
+  Serial.begin(115200);
+  //Config Wi-fi
+  // Configures static IP address
+  if (!WiFi.config(staticIP, gateway, subnet, primaryDNS, secondaryDNS)) {
+    Serial.println("STA Failed to configure");
+  }
   //Inicializa o sensor BMP280
   bmp280.begin(0x76);
   //Inicializa o sensor DHT
@@ -96,9 +127,20 @@ void setup() {
   display.setTextColor(WHITE);
   display.setCursor(0, 10);
   // Display static text
-  display.println("PMR3402");
+  display.println("PMR3402\n");
   display.display();
   delay(1);  
+  
+  //Conecta no Wifi
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting");
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(1);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP()); 
   
 }
 
@@ -169,6 +211,33 @@ int executarAcao(int codigoAcao)
         // Display static text
         display.println("A02 - ENVIAR\n");
         display.display(); 
+        
+
+        if(WiFi.status()== WL_CONNECTED){ 
+                 
+          HTTPClient http;
+      
+          http.begin("http://estacao-meteorologica.000webhostapp.com/esp-dados-post.php");
+          
+          http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+          
+          // POST Request
+          String httpRequestData = "sensor=" + sensorName + "&local=" + sensorLocation + "&temperatura=" + String(tempC) + "&humidade=" + String(humi) + "&pressao=" + String(pressao) + "&chuva=" + String(rainAnalogVal) + "&altitude=" + String(altitude) + "";
+  
+          int httpResponseCode = http.POST(httpRequestData);
+          //int httpResponseCode = http.GET();
+          Serial.print(httpRequestData);
+          Serial.print("\nHTTP Response code: ");
+          Serial.println(httpResponseCode);
+          Serial.print("\nResponse: \n");
+          String response = http.getString();
+          Serial.println(response);
+  
+          http.end();
+        } 
+        else {
+          Serial.println("Wifi Disconnected");
+        }
         delay(5);
         estado = DADOS_ARMAZENADOS; //Proximo estado
         codigoEvento = DISPONIBILIZAR_DADOS; //Proximo evento
