@@ -13,6 +13,7 @@
 #include <HTTPClient.h>
 
 
+
 //Definições para o sensor BMP280
 
 #define BMP_SDA 21
@@ -22,13 +23,13 @@
 const char* ssid = "AP 104_EXT";
 const char* password = "11043083";
 
-//Configurações do servidor
-//const char* serverName = "http://estacao-meteorologica.000webhostapp.com/esp-dados-post.php";
 
 //Configurações para comunicação com o servidor
 String apiKeyValue = "USPPMR3402";
 String sensorName = "ESTAC";
 String sensorLocation = "Casa";
+
+//Configuração de IP para minha rede Wi-fi - Mudar de acordo com a rede a se conectar
 
 IPAddress staticIP(192, 168, 15, 35);
 IPAddress gateway(192, 168, 15, 1);
@@ -92,6 +93,11 @@ float pressao;
 int rainAnalogVal;
 float altitude;
 
+//Task Handler para os estados
+TaskHandle_t TaskHandle_A01; // handler for Task2
+TaskHandle_t TaskHandle_A02; // handler for Task2
+TaskHandle_t TaskHandle_A03; // handler for Task2
+
 // Pre declaração de funções
 
 int executarAcao(int codigoAcao);
@@ -100,6 +106,9 @@ int obterAcao(int estado, int codigoEvento);
 int obterProximoEstado(int estado, int codigoEvento);
 char msg_display(char msg);
 void delay(int number_of_seconds);
+void TaskA01(void * pvParameters); //Defino a Task para envio de dados
+void TaskA02(void * pvParameters);
+void TaskA03(void * pvParameters);
 
 //Setup do projeto
 
@@ -141,7 +150,18 @@ void setup() {
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP()); 
+
+  Serial.print("Bytes livres na memoria ");
+  Serial.println(xPortGetFreeHeapSize());
+  delay(5);
   
+  //Cria as tasks
+  xTaskCreate(TaskA01, "A01", 30000, NULL, 1, &TaskHandle_A01);
+  vTaskSuspend(TaskHandle_A01); //Suspendo a task
+  xTaskCreate(TaskA02, "A02", 30000, NULL, 2, &TaskHandle_A02);
+  vTaskSuspend(TaskHandle_A02); //Suspendo a task
+  xTaskCreate(TaskA03, "A03", 30000, NULL, 3, &TaskHandle_A03);
+  vTaskSuspend(TaskHandle_A03); //Suspendo a task
 }
 
 // Loop principal de controle da Estação Meteorológica
@@ -185,74 +205,28 @@ int executarAcao(int codigoAcao)
     switch(codigoAcao)
     {
     case A01:
-        display.clearDisplay(); //Limpa display
-        display.setTextSize(1);
-        display.setTextColor(WHITE);
-        display.setCursor(0, 0);
-        // Display static text
-        display.println("A01 - MEDICOES\n");
-        display.setCursor(0, 10);
-        display.printf("Temperatura: %5.2f C\r\n", tempC);
-        display.printf("Humidade : %5.2f %%\r\n", humi);
-        display.printf("Pressao : %5.2f hPa\r\n", pressao);
-        display.printf("Chuva : %d \r\n", rainAnalogVal);
-        display.printf("Altitude : %5.2f m\r\n", altitude);
-        display.drawRect(109, 24, 3, 3, WHITE); // put degree symbol ( ° )
-        display.display(); 
+        vTaskResume(TaskHandle_A01); //Continuo a task
         delay(5);
         estado = MEDICOES_REALIZADAS; //Proximo estado
         codigoEvento = ENVIAR_DADOS; //Proximo evento
+        Serial.println("Task A01 esta se suspendendo\n");
+        vTaskSuspend(TaskHandle_A01); //Suspendo a task
         break;
     case A02:
-        display.clearDisplay(); //Limpa display
-        display.setTextSize(1);
-        display.setTextColor(WHITE);
-        display.setCursor(0, 10);
-        // Display static text
-        display.println("A02 - ENVIAR\n");
-        display.display(); 
-        
-
-        if(WiFi.status()== WL_CONNECTED){ 
-                 
-          HTTPClient http;
-      
-          http.begin("http://estacao-meteorologica.000webhostapp.com/esp-dados-post.php");
-          
-          http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-          
-          // POST Request
-          String httpRequestData = "sensor=" + sensorName + "&local=" + sensorLocation + "&temperatura=" + String(tempC) + "&humidade=" + String(humi) + "&pressao=" + String(pressao) + "&chuva=" + String(rainAnalogVal) + "&altitude=" + String(altitude) + "";
-  
-          int httpResponseCode = http.POST(httpRequestData);
-          //int httpResponseCode = http.GET();
-          Serial.print(httpRequestData);
-          Serial.print("\nHTTP Response code: ");
-          Serial.println(httpResponseCode);
-          Serial.print("\nResponse: \n");
-          String response = http.getString();
-          Serial.println(response);
-  
-          http.end();
-        } 
-        else {
-          Serial.println("Wifi Disconnected");
-        }
+        vTaskResume(TaskHandle_A02);
         delay(5);
         estado = DADOS_ARMAZENADOS; //Proximo estado
         codigoEvento = DISPONIBILIZAR_DADOS; //Proximo evento
+        Serial.println("Task A02 esta se suspendendo\n");
+        vTaskSuspend(TaskHandle_A02); //Suspendo a task
         break;
     case A03:
-        display.clearDisplay(); //Limpa display
-        display.setTextSize(1);
-        display.setTextColor(WHITE);
-        display.setCursor(0, 10);
-        // Display static text
-        display.println("A03 - DISPONIBILIZAR\n");
-        display.display(); 
+        vTaskResume(TaskHandle_A03); //Continuo a task
         delay(5);
         estado = STANDBY; //Proximo estado
         codigoEvento = REALIZAR_MEDICOES; //Proximo evento
+        Serial.println("Task A03 esta se suspendendo\n");
+        vTaskSuspend(TaskHandle_A03); //Suspendo a task
         break;
     } // switch
 
@@ -310,4 +284,78 @@ void delay(int number_of_seconds)
     // looping till required time is not achieved
     while (clock() < start_time + milli_seconds)
         ;
+}
+
+//Task A01 
+void TaskA01(void * pvParameters){
+  Serial.println("Task A01 esta rodando\n");
+  display.clearDisplay(); //Limpa display
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  // Display static text
+  display.println("A01 - MEDICOES\n");
+  display.setCursor(0, 10);
+  display.printf("Temperatura: %5.2f C\r\n", tempC);
+  display.printf("Humidade : %5.2f %%\r\n", humi);
+  display.printf("Pressao : %5.2f hPa\r\n", pressao);
+  display.printf("Chuva : %d \r\n", rainAnalogVal);
+  display.printf("Altitude : %5.2f m\r\n", altitude);
+  display.drawRect(109, 24, 3, 3, WHITE); // simbolo graus
+  display.display(); 
+  vTaskDelay(5000);
+}
+
+//Task A02 
+void TaskA02(void * pvParameters){
+  Serial.println("Iniciando Task A02\n");
+  display.clearDisplay(); //Limpa display
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 10);
+  // Display static text
+  display.println("A02 - ENVIAR\n");
+  display.display(); 
+  
+  Serial.println("Comecando envio do POST\n");
+  if(WiFi.status()== WL_CONNECTED){ 
+    HTTPClient http;
+    
+    http.begin("http://estacao-meteorologica.000webhostapp.com/esp-dados-post.php");
+    http.setTimeout(5000);; //Timeout de 5 segundos
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    
+    // POST Request
+    String httpRequestData = "sensor=" + sensorName + "&local=" + sensorLocation + "&temperatura=" + String(tempC) + "&humidade=" + String(humi) + "&pressao=" + String(pressao) + "&chuva=" + String(rainAnalogVal) + "&altitude=" + String(altitude) + "";
+    Serial.println("Enviando requisicao\n");
+    int httpResponseCode = http.POST(httpRequestData);
+    //int httpResponseCode = http.GET();
+    Serial.println("POST bem sucedido\n");
+    Serial.print(httpRequestData);
+    Serial.print("\nHTTP Response code: ");
+    Serial.println(httpResponseCode);
+    Serial.print("\nResponse: \n");
+    String response = http.getString();
+    Serial.println(response);
+
+    http.end();
+  } 
+  else {
+    Serial.println("Wifi Disconnected");
+  }
+  vTaskDelay(5000);
+}
+
+//Task A03
+
+void TaskA03(void * pvParameters){
+  Serial.println("Task A03 esta rodando\n");
+  display.clearDisplay(); //Limpa display
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 10);
+  // Display static text
+  display.println("A03 - DISPONIBILIZAR\n");
+  display.display(); 
+  vTaskDelay(5000);
 }
